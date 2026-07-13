@@ -4,12 +4,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { useStore } from './hooks/useStore'
 import { PLATFORMS, PLATFORM_LABELS, type Comment, type Rule } from './lib/types'
 import { matchRule, avatarFor } from './lib/matcher'
+import { DEFAULT_FAQS } from './lib/defaultFaqs'
 import { RulesTable } from './components/RulesTable'
 import { StatsCards } from './components/StatsCards'
 import { Bookmarklet } from './components/Bookmarklet'
 import {
   ArrowRight, ArrowLeft, Sparkles, Settings, BarChart3, Send,
-  Sun, Moon, Trash2, MessageSquare,
+  Sun, Moon, Trash2, MessageSquare, Copy, Check, Download, Upload, Plus,
 } from 'lucide-react'
 
 type Tab = 'composer' | 'rules' | 'stats' | 'extension'
@@ -80,6 +81,47 @@ export default function HomePage() {
     }
   }
 
+  // JSON 匯出
+  const exportJSON = () => {
+    const data = { rules: state.rules, comments: state.comments, post: state.post, exportedAt: new Date().toISOString() }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `comment-reply-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // JSON 匯入
+  const importJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string)
+        if (!data.rules || !Array.isArray(data.rules)) {
+          alert('檔案格式不正確（缺少 rules 陣列）')
+          return
+        }
+        if (!confirm(`將匯入 ${data.rules.length} 條規則、${data.comments?.length || 0} 則留言。繼續？`)) return
+        update({ rules: data.rules, comments: data.comments || [], post: data.post || state.post })
+        alert('匯入成功')
+      } catch (err) {
+        alert('JSON 解析失敗：' + (err as Error).message)
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = '' // reset
+  }
+
+  // 重置為預設 50 FAQ
+  const restoreDefaults = () => {
+    if (!confirm(`將重置為 ${DEFAULT_FAQS.length} 條預載 FAQ（會清除自訂規則）。繼續？`)) return
+    update({ rules: DEFAULT_FAQS })
+  }
+
   // Apply theme class
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -117,6 +159,22 @@ export default function HomePage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={exportJSON}
+              className="p-2 rounded-lg hover:bg-surface-2 opacity-70 hover:opacity-100"
+              aria-label="匯出 JSON"
+              title="匯出 JSON 備份"
+            >
+              <Download size={16} />
+            </button>
+            <label
+              className="p-2 rounded-lg hover:bg-surface-2 opacity-70 hover:opacity-100 cursor-pointer"
+              aria-label="匯入 JSON"
+              title="匯入 JSON 備份"
+            >
+              <Upload size={16} />
+              <input type="file" accept=".json" onChange={importJSON} className="hidden" />
+            </label>
             <button
               onClick={() => update({ theme: state.theme === 'dark' ? 'light' : 'dark' })}
               className="p-2 rounded-lg hover:bg-surface-2"
@@ -167,11 +225,20 @@ export default function HomePage() {
 
         {activeTab === 'rules' && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-2xl font-bold mb-1">自動回覆規則</h2>
-              <p className="text-sm opacity-60">
-                設定關鍵字與對應回覆，留言比對時優先級高的先匹配。
-              </p>
+            <div className="flex justify-between items-end">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">自動回覆規則</h2>
+                <p className="text-sm opacity-60">
+                  設定關鍵字與對應回覆，留言比對時優先級高的先匹配。
+                  目前 {state.rules.length} 條規則（{state.rules.filter((r) => r.enabled).length} 啟用）。
+                </p>
+              </div>
+              <button
+                onClick={restoreDefaults}
+                className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 opacity-70 hover:opacity-100 flex items-center gap-1"
+              >
+                ↻ 重置為 {DEFAULT_FAQS.length} 條預載 FAQ
+              </button>
             </div>
             <RulesTable
               rules={state.rules}
@@ -191,7 +258,18 @@ export default function HomePage() {
               </p>
             </div>
             <StatsCards comments={classified} />
-            {classified.length > 0 && <CommentList comments={classified} rules={state.rules} />}
+            {classified.length > 0 && (
+              <CommentList
+                comments={classified}
+                rules={state.rules}
+                onAddRule={(keyword, reply) => {
+                  const id = `user-${Date.now()}`
+                  const newRule: Rule = { id, keyword, reply, matchMode: 'exact', enabled: true, priority: 50, platform: 'generic' }
+                  update({ rules: [...state.rules, newRule] })
+                  alert(`已新增 FAQ「${keyword}」`)
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -289,46 +367,85 @@ function ComposerStep({
   )
 }
 
-function CommentList({ comments, rules }: { comments: Comment[]; rules: Rule[] }) {
+function CommentList({ comments, rules, onAddRule }: { comments: Comment[]; rules: Rule[]; onAddRule: (keyword: string, reply: string) => void }) {
   if (!comments.length) return null
   return (
     <div className="space-y-2">
       <h3 className="text-sm font-black uppercase tracking-wider opacity-60">留言列表</h3>
       {comments.map((c) => (
-        <div
-          key={c.id}
-          className="bg-surface-2 rounded-xl p-4 border border-white/5 flex items-start gap-3"
-        >
-          <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-bold text-sm">{c.name}</span>
-              <span className="text-xs opacity-50">{c.time}</span>
-              <span
-                className={`ml-auto text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                  c.status === 'auto-replied'
-                    ? 'bg-emerald-500/20 text-emerald-300'
-                    : c.status === 'no-match'
-                    ? 'bg-amber-500/20 text-amber-300'
-                    : 'bg-blue-500/20 text-blue-300'
-                }`}
-              >
-                {c.status === 'auto-replied'
-                  ? `✓ 匹配「${c.triggeredRule}」`
-                  : c.status === 'no-match'
-                  ? '無匹配'
-                  : '待處理'}
-              </span>
-            </div>
-            <div className="text-sm opacity-90 break-words">{c.text}</div>
-            {c.status === 'auto-replied' && c.triggeredRule && (
-              <div className="mt-2 px-3 py-2 bg-surface-3 rounded text-xs opacity-80">
-                💬 {rules.find((r) => r.keyword === c.triggeredRule)?.reply}
-              </div>
-            )}
-          </div>
-        </div>
+        <CommentCard key={c.id} c={c} rules={rules} onAddRule={onAddRule} />
       ))}
+    </div>
+  )
+}
+
+function CommentCard({ c, rules, onAddRule }: { c: Comment; rules: Rule[]; onAddRule: (keyword: string, reply: string) => void }) {
+  const [copied, setCopied] = useState(false)
+  const replyText = c.triggeredRule ? rules.find((r) => r.keyword === c.triggeredRule)?.reply || '' : ''
+
+  const copy = () => {
+    if (!replyText) return
+    navigator.clipboard.writeText(replyText).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  return (
+    <div className="bg-surface-2 rounded-xl p-4 border border-white/5 flex items-start gap-3">
+      <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="font-bold text-sm">{c.name}</span>
+          <span className="text-xs opacity-50">{c.time}</span>
+          <span
+            className={`ml-auto text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+              c.status === 'auto-replied'
+                ? 'bg-emerald-500/20 text-emerald-300'
+                : c.status === 'no-match'
+                ? 'bg-amber-500/20 text-amber-300'
+                : 'bg-blue-500/20 text-blue-300'
+            }`}
+          >
+            {c.status === 'auto-replied'
+              ? `✓ 匹配「${c.triggeredRule}」`
+              : c.status === 'no-match'
+              ? '無匹配'
+              : '待處理'}
+          </span>
+        </div>
+        <div className="text-sm opacity-90 break-words">{c.text}</div>
+        {c.status === 'auto-replied' && c.triggeredRule && (
+          <div className="mt-2 px-3 py-2 bg-surface-3 rounded text-xs opacity-80 flex items-start gap-2">
+            <span className="flex-1">💬 {replyText}</span>
+            <button
+              onClick={copy}
+              className="flex-shrink-0 px-2 py-0.5 rounded bg-accent/20 hover:bg-accent/30 text-accent flex items-center gap-1"
+              title="複製回覆到剪貼簿"
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              <span className="text-[10px]">{copied ? '已複製' : '複製'}</span>
+            </button>
+          </div>
+        )}
+        {c.status === 'no-match' && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-xs text-amber-300">💡 未匹配，建議新增 FAQ</span>
+            <button
+              onClick={() => {
+                const suggested = c.text.slice(0, 10)
+                const reply = prompt(`為「${c.text}」新增回覆模板：`, `您好，感謝您的留言！我們會盡快回覆您關於「${suggested}」的問題。`)
+                if (reply) {
+                  onAddRule(suggested, reply)
+                }
+              }}
+              className="text-xs px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 flex items-center gap-1"
+            >
+              <Plus size={12} /> 加入 FAQ
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

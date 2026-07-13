@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { DEFAULT_STATE, type AppState, STORAGE_KEY } from '@/app/lib/types'
+import { DEFAULT_FAQS } from '@/app/lib/defaultFaqs'
 
 export function useStore() {
   const [state, setState] = useState<AppState>(DEFAULT_STATE)
@@ -16,10 +17,18 @@ export function useStore() {
       const raw = window.localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw) as AppState
-        setState({ ...DEFAULT_STATE, ...parsed })
+        // First-time user: seed with 50 default FAQs
+        if (!parsed.rules || parsed.rules.length === 0) {
+          parsed.rules = DEFAULT_FAQS
+        }
+        setState({ ...DEFAULT_STATE, ...parsed, rules: parsed.rules })
+      } else {
+        // Fresh user: load defaults
+        setState({ ...DEFAULT_STATE, rules: DEFAULT_FAQS })
       }
     } catch (err) {
       console.warn('[useStore] hydrate failed', err)
+      setState({ ...DEFAULT_STATE, rules: DEFAULT_FAQS })
     } finally {
       setHydrated(true)
     }
@@ -40,7 +49,7 @@ export function useStore() {
   }, [])
 
   const reset = useCallback(() => {
-    setState(DEFAULT_STATE)
+    setState({ ...DEFAULT_STATE, rules: DEFAULT_FAQS })
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY)
     }
