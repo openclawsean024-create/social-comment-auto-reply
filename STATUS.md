@@ -46,10 +46,15 @@
 - Static pages generated (3/3)
 - Routes: `/` (○ Static)
 
-### Stage 4：部署 ⏳
-- [pending] git commit + push
-- [pending] vercel link
-- [pending] vercel deploy --prod
+### Stage 4：部署 ✅
+- ✅ git commit `e664912` (`wip(dev): social-comment-auto-reply initial scaffold + 51 tests`)
+- ✅ git push origin main (011f7ad → e664912)
+- ✅ vercel link (GitHub connect non-fatal, projectId created)
+- ✅ vercel deploy --prod (exit 0)
+- **Production URL**：https://social-comment-auto-reply-dev.vercel.app
+- **HEAD commit SHA**：`e664912676111c543661d24b46d32da26b542563`
+- **HTTP 200 OK** verified via curl（content 含 "社群留言自動回覆"）
+- Vercel build 23s + deploy 40s
 
 ---
 
@@ -98,4 +103,4 @@
 
 - Tests: **51/51 (100% pass rate)** ✅ ≥ 80% target
 - Build: **exit 0, 1.7s compile** ✅
-- Deploy: **⏳ pending** — see [真實狀態] Stage 4
+- Deploy: **✅ https://social-comment-auto-reply-dev.vercel.app** HEAD `e664912` HTTP 200
