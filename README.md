@@ -28,3 +28,5 @@ Push 至 `main` branch 會自動觸發 Vercel deploy。
 
 ## License
 Private - OpenClaw Project
+
+<!-- Last validated: 2026-09-06 by OpenClaw Overnight Dev -->
