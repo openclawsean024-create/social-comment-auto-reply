@@ -2,37 +2,39 @@
 
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { DEFAULT_STATE, type AppState, STORAGE_KEY } from '@/app/lib/types'
 import { DEFAULT_FAQS } from '@/app/lib/defaultFaqs'
 
-export function useStore() {
-  const [state, setState] = useState<AppState>(DEFAULT_STATE)
-  const [hydrated, setHydrated] = useState(false)
+const subscribeToHydration = () => () => {}
+const getClientHydrationSnapshot = () => true
+const getServerHydrationSnapshot = () => false
 
-  // Hydrate from localStorage on mount (client only)
-  useEffect(() => {
-    if (typeof window === 'undefined') return
+export function useStore() {
+  const [state, setState] = useState<AppState>(() => {
+    if (typeof window === 'undefined') return DEFAULT_STATE
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as AppState
-        // First-time user: seed with 50 default FAQs
-        if (!parsed.rules || parsed.rules.length === 0) {
-          parsed.rules = DEFAULT_FAQS
-        }
-        setState({ ...DEFAULT_STATE, ...parsed, rules: parsed.rules })
-      } else {
-        // Fresh user: load defaults
-        setState({ ...DEFAULT_STATE, rules: DEFAULT_FAQS })
-      }
+      if (!raw) return { ...DEFAULT_STATE, rules: DEFAULT_FAQS }
+
+      const parsed = JSON.parse(raw) as AppState
+      const rules = Array.isArray(parsed.rules) && parsed.rules.length > 0
+        ? parsed.rules
+        : DEFAULT_FAQS
+      return { ...DEFAULT_STATE, ...parsed, rules }
     } catch (err) {
       console.warn('[useStore] hydrate failed', err)
-      setState({ ...DEFAULT_STATE, rules: DEFAULT_FAQS })
-    } finally {
-      setHydrated(true)
+      return { ...DEFAULT_STATE, rules: DEFAULT_FAQS }
     }
-  }, [])
+  })
+  // The server snapshot stays false for SSR and the first client render. Once
+  // hydration subscribes, the client snapshot becomes true without an effect
+  // that synchronously updates component state.
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot,
+  )
 
   // Persist on change
   useEffect(() => {
